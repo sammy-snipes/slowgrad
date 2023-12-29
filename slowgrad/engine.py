@@ -2,6 +2,7 @@ import torch
 from torch import einsum
 import string
 from .autograd.jacobian import create_backprop_einsum_pattern
+from typing import Optional
 
 
 class SlowgradVar:
@@ -49,7 +50,6 @@ class SlowgradVar:
         out = SlowgradVar(self.data.sum(), _children=(self,))
 
         def _backward():
-            # ! Theres somethign fishy here....
             # ? Ok I think we are good here.
             self.local_jacobian = torch.ones_like(self.data)
             backpropogate(self, out)
@@ -58,10 +58,17 @@ class SlowgradVar:
         out._backward = _backward
         return out
 
-    def backward(self):
+    def backward(self, x: Optional["SlowgradVar"] = None):
         """Backpropogates by calling the _backward function of each member in the computational graph"""
         topo = []
         visited = set()
+        assert (x is not None) or (
+            self.data.dim() == 0 or self.data.dim() == 1  # ! I DONT KNOW IF THIS WORKS
+        ), "called backward on a non-scalar without specifying grad"
+        if x:
+            self.jacobian = x.data
+        else:
+            self.jacobian = torch.tensor(1.0)
 
         def build_topo(v):
             if v not in visited:
@@ -71,16 +78,12 @@ class SlowgradVar:
                 topo.append(v)
 
         build_topo(self)
-        # ! Check this
-        self.jacobian = torch.tensor(1.0)
         for v in reversed(topo):
             v._backward()
 
 
 def backpropogate(a: SlowgradVar, out: SlowgradVar) -> None:
     """Backpropogates from 'out' into a"""
-    # print(a.jacobian.dim(), out.jacobian.shape)
-    # print(create_backprop_einsum_pattern(out.jacobian.dim(), a.local_jacobian.dim()))
     a.jacobian = einsum(
         create_backprop_einsum_pattern(out.jacobian.dim(), a.local_jacobian.dim()),
         out.jacobian,
