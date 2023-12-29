@@ -1,13 +1,14 @@
 import torch
 from torch import einsum
 import string
+from .autograd.jacobian import create_backprop_einsum_pattern
 
 
 class SlowgradVar:
     """Encapsulates a tensor with automatic gradient"""
 
     def __init__(self, data, _children=(), _op="") -> None:
-        self.data = data
+        self.data = data if isinstance(data, torch.Tensor) else torch.tensor(data)
         self.grad: torch.Tensor = torch.zeros_like(self.data)
 
         self.local_jacobian: torch.Tensor = torch.Tensor()
@@ -48,7 +49,11 @@ class SlowgradVar:
         out = SlowgradVar(self.data.sum(), _children=(self,))
 
         def _backward():
-            self.jacobian = torch.ones_like(self.data)
+            # ! Theres somethign fishy here....
+            # ? Ok I think we are good here.
+            self.local_jacobian = torch.ones_like(self.data)
+            backpropogate(self, out)
+            self.grad += self.jacobian
 
         out._backward = _backward
         return out
@@ -66,6 +71,18 @@ class SlowgradVar:
                 topo.append(v)
 
         build_topo(self)
+        # ! Check this
         self.jacobian = torch.tensor(1.0)
         for v in reversed(topo):
             v._backward()
+
+
+def backpropogate(a: SlowgradVar, out: SlowgradVar) -> None:
+    """Backpropogates from 'out' into a"""
+    # print(a.jacobian.dim(), out.jacobian.shape)
+    # print(create_backprop_einsum_pattern(out.jacobian.dim(), a.local_jacobian.dim()))
+    a.jacobian = einsum(
+        create_backprop_einsum_pattern(out.jacobian.dim(), a.local_jacobian.dim()),
+        out.jacobian,
+        a.local_jacobian,
+    )

@@ -75,13 +75,13 @@ def compute_einsum_jacobian(
     return einsum(einsum_out_string, jacobian)
 
 
-def compute_dual_input_einsum_jacobian(
-    ptrn: str, x: torch.Tensor, a: torch.Tensor
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Computes the Jacobian w.r.t. both inputs and returns in a tuple"""
-    j_x = compute_einsum_jacobian(ptrn, x, a)
-    j_a = compute_einsum_jacobian(swap_einsum_inputs(ptrn), a, x)
-    return j_x, j_a
+# def compute_dual_input_einsum_jacobian(
+#     ptrn: str, x: torch.Tensor, a: torch.Tensor
+# ) -> tuple[torch.Tensor, torch.Tensor]:
+#     """Computes the Jacobian w.r.t. both inputs and returns in a tuple"""
+#     j_x = compute_einsum_jacobian(ptrn, x, a)
+#     j_a = compute_einsum_jacobian(swap_einsum_inputs(ptrn), a, x)
+#     return j_x, j_a
 
 
 def sigmoid_jacobian(x: torch.Tensor) -> torch.Tensor:
@@ -91,3 +91,8 @@ def sigmoid_jacobian(x: torch.Tensor) -> torch.Tensor:
     diag_ptrn = string.ascii_lowercase[: x.dim()]
     einsum(f"{diag_ptrn}{diag_ptrn}->{diag_ptrn}", j)[:] = sig * (1 - sig)
     return j
+
+
+def mse_jacobian(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    assert x.shape == y.shape, "shape mismatch"
+    return 2 * (x - y) / x.numel()

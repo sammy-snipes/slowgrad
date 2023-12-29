@@ -1,63 +1,32 @@
+from typing import Any, List, Optional
 from .engine import SlowgradVar
-
-from .jacobian_functions import (
-    compute_einsum_jacobian,
-    create_backprop_einsum_pattern,
-    swap_einsum_inputs,
-    sigmoid_jacobian,
-)
+from .functional import slowgrad_einsum, slowgrad_sigmoid
 import torch
-from torch import einsum
-from einops import repeat
 import torch.nn as nn
 
 
-def slowgrad_einsum(ptrn: str, a: SlowgradVar, b: SlowgradVar) -> SlowgradVar:
-    """Preforms einsum operations and returns as a new SlowGradVar"""
-    out = SlowgradVar(einsum(ptrn, a.data, b.data), _children=(a, b), _op="ein")
+# ! Write a parent module to house the children. it will make code easier
+class SlowgradModule:
+    def __init__(self) -> None:
+        pass
 
-    def _backward():
-        def calc_local_jacobian(ptrn, x, y):
-            x.local_jacobian = compute_einsum_jacobian(ptrn, x.data, y.data)
+    def __call__(self, x) -> Any:
+        pass
 
-        def update_gradient(x):
-            x.grad += x.jacobian
+    def from_torch(self, x) -> "SlowgradModule":
+        return self
 
-        def execute_backprop(ptrn, x, y, out):
-            calc_local_jacobian(ptrn, x, y)
-            backpropogate(x, out)
-            update_gradient(x)
-
-        execute_backprop(ptrn, a, b, out)
-        execute_backprop(swap_einsum_inputs(ptrn), b, a, out)
-
-    out._backward = _backward
-    return out
+    def parameters(self):
+        return []
 
 
-def slowgrad_sigmoid(a: SlowgradVar) -> SlowgradVar:
-    """Applies sigmoid returning the result as a new SlowGradVar"""
-    out = SlowgradVar(torch.sigmoid(a.data), _children=(a,), _op="sig")
-
-    def _backward():
-        a.local_jacobian = sigmoid_jacobian(a.data)
-        backpropogate(a, out)
-
-    out._backward = _backward
-    return out
-
-
-def backpropogate(a: SlowgradVar, out: SlowgradVar) -> None:
-    """Backpropogates from 'out' into a"""
-    a.jacobian = einsum(
-        create_backprop_einsum_pattern(out.jacobian.dim(), a.local_jacobian.dim()),
-        out.jacobian,
-        a.local_jacobian,
-    )
-
-
-class SlowgradLinear:
-    def __init__(self, in_features=None, out_features=None, bias=None) -> None:
+class SlowgradLinear(SlowgradModule):
+    def __init__(
+        self,
+        in_features: Optional[int] = None,
+        out_features: Optional[int] = None,
+        bias: Optional[bool] = None,
+    ) -> None:
         self.weight = (
             SlowgradVar(torch.randn(in_features, out_features))
             if in_features and out_features
@@ -67,7 +36,7 @@ class SlowgradLinear:
             SlowgradVar(torch.randn(1, out_features)) if bias and out_features else None
         )
 
-    def __call__(self, x: SlowgradVar):
+    def __call__(self, x: SlowgradVar) -> SlowgradVar:
         out = slowgrad_einsum("ij,jk->ik", x, self.weight)
         if self.bias:
             out += self.bias
@@ -80,3 +49,45 @@ class SlowgradLinear:
         else:
             self.bias = None
         return self
+
+    def parameters(self) -> List[SlowgradVar]:
+        return [p for p in (self.weight, self.bias) if p is not None]
+
+
+class SlowgradSigmoid(SlowgradModule):
+    def __call__(self, x: SlowgradVar) -> SlowgradVar:
+        return slowgrad_sigmoid(x)
+
+
+class SlowgradSequential:
+    def __init__(self, layers: Optional[List[SlowgradModule]] = None) -> None:
+        if layers:
+            non_slowgrad_modules = [
+                l for l in layers if not isinstance(l, SlowgradModule)
+            ]
+            assert (
+                not non_slowgrad_modules
+            ), f"{non_slowgrad_modules} are not slowgrad modules"
+            self.layers = layers
+
+    def from_torch(self, layers: nn.Sequential):
+        implemented_layers = {nn.Sigmoid: SlowgradSigmoid, nn.Linear: SlowgradLinear}
+        missing_implementation = [
+            type(l) for l in layers if type(l) not in implemented_layers
+        ]
+        assert (
+            not missing_implementation
+        ), f"missing implemntation for : {missing_implementation}"
+
+        self.layers = [implemented_layers[type(l)]().from_torch(l) for l in layers]
+        return self
+
+    def __call__(self, x: SlowgradVar) -> SlowgradVar:
+        out = x
+        for layer in self.layers:
+            out = layer(out)
+        return out
+
+    def parameters(self) -> List[SlowgradVar]:
+        params = [l.parameters() for l in self.layers]
+        return sum(params, [])
