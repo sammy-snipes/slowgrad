@@ -20,7 +20,6 @@ class TestGradient(unittest.TestCase):
         self.assertTrue(torch.allclose(s.grad, t.grad))
 
     # ! Write a multiplication method?
-
     def test_matrix_addition_gradient(self):
         (t, a), (s, b) = self.make_values([(5, 6), (5, 6)])
         (t + a).sum().backward()

@@ -1,11 +1,10 @@
 from typing import Any, List, Optional
 from .engine import SlowgradVar
-from .functional import slowgrad_einsum, slowgrad_sigmoid
+from .functional import slowgrad_einsum, slowgrad_sigmoid, slowgrad_mse
 import torch
 import torch.nn as nn
 
 
-# ! Write a parent module to house the children. it will make code easier
 class SlowgradModule:
     def __init__(self) -> None:
         pass
@@ -59,6 +58,11 @@ class SlowgradSigmoid(SlowgradModule):
         return slowgrad_sigmoid(x)
 
 
+class SlowgradMSELoss(SlowgradModule):
+    def __call__(self, input, target) -> SlowgradVar:
+        return slowgrad_mse(input, target)
+
+
 class SlowgradSequential:
     def __init__(self, layers: Optional[List[SlowgradModule]] = None) -> None:
         if layers:
@@ -71,7 +75,11 @@ class SlowgradSequential:
             self.layers = layers
 
     def from_torch(self, layers: nn.Sequential):
-        implemented_layers = {nn.Sigmoid: SlowgradSigmoid, nn.Linear: SlowgradLinear}
+        implemented_layers = {
+            nn.Sigmoid: SlowgradSigmoid,
+            nn.Linear: SlowgradLinear,
+            nn.MSELoss: SlowgradMSELoss,
+        }
         missing_implementation = [
             type(l) for l in layers if type(l) not in implemented_layers
         ]

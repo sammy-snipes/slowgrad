@@ -57,7 +57,6 @@ class SlowgradVar:
             # ? Ok I think we are good here.
             self.local_jacobian = torch.ones_like(self.data)
             backpropogate(self, out)
-            # self.grad += self.jacobian
 
         out._backward = _backward
         return out
@@ -67,7 +66,7 @@ class SlowgradVar:
         topo = []
         visited = set()
         assert (x is not None) or (
-            self.data.dim() == 0 or self.data.dim() == 1  # ! I DONT KNOW IF THIS WORKS
+            self.data.dim() == 0 or self.data.dim() == 1
         ), "called backward on a non-scalar without specifying grad"
         if x:
             self.jacobian = x.data
