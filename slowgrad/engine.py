@@ -9,8 +9,12 @@ class SlowgradVar:
     """Encapsulates a tensor with automatic gradient"""
 
     def __init__(self, data, _children=(), _op="") -> None:
-        self.data = data if isinstance(data, torch.Tensor) else torch.tensor(data)
-        self.grad: torch.Tensor = torch.zeros_like(self.data)
+        self.data = (
+            data.detach().clone()
+            if isinstance(data, torch.Tensor)
+            else torch.tensor(data, requires_grad=False)
+        )
+        self.grad: torch.Tensor = torch.zeros_like(self.data, requires_grad=False)
 
         self.local_jacobian: torch.Tensor = torch.Tensor()
         self.jacobian: torch.Tensor = torch.Tensor()
@@ -53,7 +57,7 @@ class SlowgradVar:
             # ? Ok I think we are good here.
             self.local_jacobian = torch.ones_like(self.data)
             backpropogate(self, out)
-            self.grad += self.jacobian
+            # self.grad += self.jacobian
 
         out._backward = _backward
         return out
@@ -89,3 +93,4 @@ def backpropogate(a: SlowgradVar, out: SlowgradVar) -> None:
         out.jacobian,
         a.local_jacobian,
     )
+    a.grad += a.jacobian

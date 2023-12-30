@@ -75,15 +75,6 @@ def compute_einsum_jacobian(
     return einsum(einsum_out_string, jacobian)
 
 
-# def compute_dual_input_einsum_jacobian(
-#     ptrn: str, x: torch.Tensor, a: torch.Tensor
-# ) -> tuple[torch.Tensor, torch.Tensor]:
-#     """Computes the Jacobian w.r.t. both inputs and returns in a tuple"""
-#     j_x = compute_einsum_jacobian(ptrn, x, a)
-#     j_a = compute_einsum_jacobian(swap_einsum_inputs(ptrn), a, x)
-#     return j_x, j_a
-
-
 def sigmoid_jacobian(x: torch.Tensor) -> torch.Tensor:
     """Computs the jacobian of sigmoid(x) for arbitary x"""
     sig = torch.sigmoid(x)
