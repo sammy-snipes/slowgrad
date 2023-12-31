@@ -3,7 +3,12 @@ from torch import einsum
 import unittest
 from slowgrad.engine import SlowgradVar
 from typing import List, Tuple, Any, Literal
-from slowgrad.functional import slowgrad_einsum, slowgrad_sigmoid, slowgrad_mse
+from slowgrad.functional import (
+    slowgrad_einsum,
+    slowgrad_sigmoid,
+    slowgrad_mse,
+    slowgrad_softmax,
+)
 
 
 class TestGradient(unittest.TestCase):
@@ -96,3 +101,20 @@ class TestGradient(unittest.TestCase):
 
         for t, s in zip(t_matricies, s_matricies):
             self.assertTrue(torch.allclose(t.grad, s.grad))
+
+    def test_softmax_gradient(self):
+        atol = 1e-6
+        # Softmax gradients are really small. My gradient calc is exact, but torch might do shenanigans with floats
+        # the resulting gradients are 1e-6 close instead of 1e-8, usually...
+        (t1, t2, t3, t4, t5), (s1, s2, s3, s4, s5) = self.make_values(
+            [(1, 1), (2, 1), (10, 20), (1, 2, 3), (1, 2, 3, 1, 2, 3)]
+        )
+
+        for t, s in zip((t1, t2, t3, t4, t5), (s1, s2, s3, s4, s5)):
+            for dim in [i for i in range(t.dim())] + [-i for i in range(t.dim())]:
+                ft = lambda x: torch.nn.functional.softmax(x, dim=dim)
+                fs = lambda x: slowgrad_softmax(x, dim=dim)
+
+                ft(t).sum().backward()
+                fs(s).sum().backward()
+                self.assertTrue(torch.allclose(t.grad, s.grad, atol=atol))
