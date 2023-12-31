@@ -7,17 +7,19 @@ from .autograd.jacobian import (
     sigmoid_jacobian,
     create_backprop_einsum_pattern,
     mse_jacobian,
+    softmax_jacobian,
 )
+import string
 
 
-def backpropogate(a: SlowgradVar, out: SlowgradVar) -> None:
+def backpropogate(x: SlowgradVar, out: SlowgradVar) -> None:
     """Backpropogates from 'out' into a"""
-    a.jacobian = einsum(
-        create_backprop_einsum_pattern(out.jacobian.dim(), a.local_jacobian.dim()),
+    x.jacobian = einsum(
+        create_backprop_einsum_pattern(out.jacobian.dim(), x.local_jacobian.dim()),
         out.jacobian,
-        a.local_jacobian,
+        x.local_jacobian,
     )
-    a.grad += a.jacobian
+    x.grad += x.jacobian
 
 
 def slowgrad_einsum(ptrn: str, a: SlowgradVar, b: SlowgradVar) -> SlowgradVar:
@@ -45,13 +47,13 @@ def slowgrad_einsum(ptrn: str, a: SlowgradVar, b: SlowgradVar) -> SlowgradVar:
     return out
 
 
-def slowgrad_sigmoid(a: SlowgradVar) -> SlowgradVar:
+def slowgrad_sigmoid(x: SlowgradVar) -> SlowgradVar:
     """Applies sigmoid returning the result as a new SlowGradVar"""
-    out = SlowgradVar(torch.sigmoid(a.data), _children=(a,), _op="sig")
+    out = SlowgradVar(torch.sigmoid(x.data), _children=(x,), _op="sig")
 
     def _backward():
-        a.local_jacobian = sigmoid_jacobian(a.data)
-        backpropogate(a, out)
+        x.local_jacobian = sigmoid_jacobian(x.data)
+        backpropogate(x, out)
 
     out._backward = _backward
     return out
@@ -65,6 +67,17 @@ def slowgrad_mse(x: SlowgradVar, y: SlowgradVar) -> SlowgradVar:
         y.local_jacobian = mse_jacobian(y.data, x.data)
         backpropogate(x, out)
         backpropogate(y, out)
+
+    out._backward = _backward
+    return out
+
+
+def slowgrad_softmax(x: SlowgradVar, dim: int = -1) -> SlowgradVar:
+    out = SlowgradVar(torch.nn.functional.softmax(x.data, dim=dim), _children=(x,))
+
+    def _backward():
+        x.local_jacobian = softmax_jacobian(x.data, dim=dim)
+        backpropogate(x, out)
 
     out._backward = _backward
     return out

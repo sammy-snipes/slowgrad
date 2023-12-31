@@ -6,9 +6,11 @@ from slowgrad.autograd.jacobian import (
     sigmoid_jacobian,
     compute_einsum_jacobian,
     swap_einsum_inputs,
+    softmax_jacobian,
 )
 from torch.autograd.functional import jacobian
 from typing import List, Tuple, Callable
+import torch.nn.functional as F
 
 
 class TestEinsumJacobian(unittest.TestCase):
@@ -106,3 +108,27 @@ class TestMSEJacobian(unittest.TestCase):
     def test_idk_matrix_mse(self):
         x, y = torch.randn(1, 2, 3, 4, 5, 6, 7), torch.randn(1, 2, 3, 4, 5, 6, 7)
         self.eval_compare(x, y)
+
+
+class TestSoftmaxJacobian(unittest.TestCase):
+    def eval_compare(self, x, dim):
+        f = lambda x: F.softmax(x, dim)
+
+        torch_jacobian = jacobian(f, x)
+        manual_jacobian = softmax_jacobian(x, dim)
+        self.assertTrue(torch.allclose(torch_jacobian, manual_jacobian))
+
+    def test_softmax_jacobian_2d(self):
+        x = torch.randn(5, 6, requires_grad=True)
+        for dim in [0, 1, -1]:
+            self.eval_compare(x, dim)
+
+    def test_softmax_jacobian_3d(self):
+        x = torch.randn(3, 5, 6, requires_grad=True)
+        for dim in [0, 1, 2, -1, -2]:
+            self.eval_compare(x, dim)
+
+    def test_softmax_jacobian_big_d(self):
+        x = torch.randn(1, 2, 3, 1, 2, 3, 1, 2, 3, requires_grad=True)
+        for dim in [0, 1, 2, 3, 4, 5, 6, 7, 8, -1, -2, -3, -4, -5, -6, -7, -8]:
+            self.eval_compare(x, dim)

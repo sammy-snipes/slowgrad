@@ -1,6 +1,7 @@
 import torch
 import string
 from torch import einsum
+import torch.nn.functional as F
 
 
 def split_einsum_pattern(ptrn: str) -> tuple[str, str, str]:
@@ -75,15 +76,40 @@ def compute_einsum_jacobian(
     return einsum(einsum_out_string, jacobian)
 
 
+def diag_ptrn(dim: int) -> str:
+    ptrn = string.ascii_lowercase[:dim]
+    return f"{ptrn}{ptrn}->{ptrn}"
+
+
 def sigmoid_jacobian(x: torch.Tensor) -> torch.Tensor:
     """Computs the jacobian of sigmoid(x) for arbitary x"""
     sig = torch.sigmoid(x)
     j = torch.zeros(*x.shape, *x.shape)
-    diag_ptrn = string.ascii_lowercase[: x.dim()]
-    einsum(f"{diag_ptrn}{diag_ptrn}->{diag_ptrn}", j)[:] = sig * (1 - sig)
+    einsum(diag_ptrn(x.dim()), j)[:] = sig * (1 - sig)
     return j
 
 
 def mse_jacobian(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     assert x.shape == y.shape, "shape mismatch"
     return 2 * (x - y) / x.numel()
+
+
+def softmax_jacobian(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
+    identity = torch.zeros(*x.shape, *x.shape)
+    einsum(diag_ptrn(x.dim()), identity)[:] = 1
+    soft = F.softmax(x, dim=dim)
+
+    chars = string.ascii_lowercase[: 2 * x.dim()]
+
+    def make_mask(x, dim=dim):
+        masks = [torch.eye(s) for s in x.shape]
+        masks[dim] = masks[dim].fill_(1)
+        in_ptrn = ",".join(chars[i : i + 2] for i in range(0, len(chars), 2))
+        out_ptrn = chars[::2] + chars[1::2]
+        return einsum(f"{in_ptrn}->{out_ptrn}", *masks)
+
+    mask = make_mask(x, dim=dim)
+
+    return einsum(
+        f"{chars[:x.dim()]},{chars},{chars}->{chars}", soft, identity - soft, mask
+    )
