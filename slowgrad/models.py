@@ -5,6 +5,7 @@ from .functional import (
     slowgrad_sigmoid,
     slowgrad_mse,
     slowgrad_softmax,
+    slowgrad_cross_entropy_loss,
 )
 import torch
 import torch.nn as nn
@@ -77,6 +78,11 @@ class SlowgradSoftmax(SlowgradModule):
         return slowgrad_softmax(x, self.dim)
 
 
+class SlowgradCrossEntropyLoss(SlowgradModule):
+    def __call__(self, x, y) -> SlowgradVar:
+        return slowgrad_cross_entropy_loss(x, y)
+
+
 class SlowgradSequential:
     def __init__(self, layers: Optional[List[SlowgradModule]] = None) -> None:
         if layers:
@@ -93,6 +99,7 @@ class SlowgradSequential:
             nn.Sigmoid: SlowgradSigmoid,
             nn.Linear: SlowgradLinear,
             nn.MSELoss: SlowgradMSELoss,
+            nn.CrossEntropyLoss: SlowgradCrossEntropyLoss,
         }
         missing_implementation = [
             type(l) for l in layers if type(l) not in implemented_layers

@@ -1,5 +1,7 @@
 import torch
 from torch import einsum
+import torch.nn as nn
+import torch.nn.functional as F
 import unittest
 from slowgrad.engine import SlowgradVar
 from typing import List, Tuple, Any, Literal
@@ -8,6 +10,7 @@ from slowgrad.functional import (
     slowgrad_sigmoid,
     slowgrad_mse,
     slowgrad_softmax,
+    slowgrad_cross_entropy_loss,
 )
 
 
@@ -103,8 +106,8 @@ class TestGradient(unittest.TestCase):
 
     def test_softmax_gradient(self):
         atol = 1e-6
-        # Softmax gradients are really small. My gradient calc is exact, but torch might do shenanigans with floats
-        # the resulting gradients are 1e-6 close instead of 1e-8, usually...
+        # Softmax gradients are really small
+        # the resulting gradients are 1e-6 close instead of 1e-8
         (t1, t2, t3, t4, t5), (s1, s2, s3, s4, s5) = self.make_values(
             [(1, 1), (2, 1), (10, 20), (1, 2, 3), (1, 2, 3, 1, 2, 3)]
         )
@@ -117,3 +120,22 @@ class TestGradient(unittest.TestCase):
                 ft(t).sum().backward()
                 fs(s).sum().backward()
                 self.assertTrue(torch.allclose(t.grad, s.grad, atol=atol))
+
+    def test_cross_entropy_loss_gradient(self):
+        def make_class_data(batch_size, num_classes):
+            x = torch.randn(batch_size, num_classes, requires_grad=True)
+            y = F.one_hot(
+                torch.arange(0, batch_size) % num_classes, num_classes=num_classes
+            ).type(torch.float)
+            xs, ys = SlowgradVar(x.detach().clone()), SlowgradVar(y.detach().clone())
+            return (x, xs), (y, ys)
+
+        for shape in [(1, 1), (1, 2), (2, 2), (20, 2), (10, 100)]:
+            (x, xs), (y, ys) = make_class_data(*shape)
+
+            ft = lambda x: nn.CrossEntropyLoss()(x, y)
+            fs = lambda xs: slowgrad_cross_entropy_loss(xs, ys)
+
+            ft(x).backward()
+            fs(xs).backward()
+            self.assertTrue(torch.allclose(x.grad, xs.grad))

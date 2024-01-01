@@ -6,7 +6,6 @@ from .autograd.jacobian import (
     compute_einsum_jacobian,
     swap_einsum_inputs,
     sigmoid_jacobian,
-    create_backprop_einsum_pattern,
     mse_jacobian,
     softmax_jacobian,
     cross_entropy_jacobian,
@@ -23,16 +22,12 @@ def slowgrad_einsum(ptrn: str, a: SlowgradVar, b: SlowgradVar) -> SlowgradVar:
     out = SlowgradVar(einsum(ptrn, a.data, b.data), _children=(a, b), _op="ein")
 
     def _backward():
-        # ? I dont know how I feel about the logic of this. Maybe it would be better to have these
-        # ? return the value, and then set it. or something
-
         def calc_local_jacobian(ptrn, x, y):
             x.local_jacobian = compute_einsum_jacobian(ptrn, x.data, y.data)
 
         def execute_backprop(ptrn, x, y, out):
             calc_local_jacobian(ptrn, x, y)
             backpropogate(out, x)
-            # backpropogate(x, out)
 
         execute_backprop(ptrn, a, b, out)
         execute_backprop(swap_einsum_inputs(ptrn), b, a, out)
@@ -47,7 +42,6 @@ def slowgrad_sigmoid(x: SlowgradVar) -> SlowgradVar:
 
     def _backward():
         x.local_jacobian = sigmoid_jacobian(x.data)
-        # backpropogate(x, out)
         backpropogate(out, x)
 
     out._backward = _backward
@@ -60,8 +54,6 @@ def slowgrad_mse(x: SlowgradVar, y: SlowgradVar) -> SlowgradVar:
     def _backward():
         x.local_jacobian = mse_jacobian(x.data, y.data)
         y.local_jacobian = mse_jacobian(y.data, x.data)
-        # backpropogate(x, out)
-        # backpropogate(y, out)
         backpropogate(out, x)
         backpropogate(out, y)
 
@@ -86,7 +78,7 @@ def slowgrad_cross_entropy_loss(x: SlowgradVar, y: SlowgradVar) -> SlowgradVar:
     dim = -1
     soft = F.softmax(x.data, dim=dim)
     log_soft = torch.log(soft)
-    loss = -einsum(haddamard_sum_ptrn(x.data.dim()), log_soft, y) / x.data.shape[0]
+    loss = -einsum(haddamard_sum_ptrn(x.data.dim()), log_soft, y.data) / x.data.shape[0]
     out = SlowgradVar(loss, _children=(x, y))
 
     def _backward():

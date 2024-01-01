@@ -140,7 +140,7 @@ def cross_entropy_jacobian(
 ) -> torch.Tensor:
     """Computes jacobian of cross entropy loss w.r.t. x"""
     dim = -1
-    if soft_x and log_soft_x:
+    if soft_x is not None and log_soft_x is not None:
         soft, log_soft = soft_x, log_soft_x
     else:
         soft = F.softmax(x, dim=dim)
