@@ -1,6 +1,11 @@
 from typing import Any, List, Optional
 from .engine import SlowgradVar
-from .functional import slowgrad_einsum, slowgrad_sigmoid, slowgrad_mse
+from .functional import (
+    slowgrad_einsum,
+    slowgrad_sigmoid,
+    slowgrad_mse,
+    slowgrad_softmax,
+)
 import torch
 import torch.nn as nn
 
@@ -61,6 +66,15 @@ class SlowgradSigmoid(SlowgradModule):
 class SlowgradMSELoss(SlowgradModule):
     def __call__(self, input, target) -> SlowgradVar:
         return slowgrad_mse(input, target)
+
+
+class SlowgradSoftmax(SlowgradModule):
+    def __init__(self, dim: int = -1) -> None:
+        super().__init__()
+        self.dim = dim
+
+    def __call__(self, x) -> SlowgradVar:
+        return slowgrad_softmax(x, self.dim)
 
 
 class SlowgradSequential:

@@ -1,7 +1,7 @@
 import torch
 from torch import einsum
 import string
-from .autograd.jacobian import create_backprop_einsum_pattern
+from .autograd.jacobian import create_backprop_einsum_pattern, backprop
 from typing import Optional
 
 
@@ -54,9 +54,8 @@ class SlowgradVar:
         out = SlowgradVar(self.data.sum(), _children=(self,))
 
         def _backward():
-            # ? Ok I think we are good here.
             self.local_jacobian = torch.ones_like(self.data)
-            backpropogate(self, out)
+            backpropogate(out, self)
 
         out._backward = _backward
         return out
@@ -85,11 +84,7 @@ class SlowgradVar:
             v._backward()
 
 
-def backpropogate(a: SlowgradVar, out: SlowgradVar) -> None:
-    """Backpropogates from 'out' into a"""
-    a.jacobian = einsum(
-        create_backprop_einsum_pattern(out.jacobian.dim(), a.local_jacobian.dim()),
-        out.jacobian,
-        a.local_jacobian,
-    )
-    a.grad += a.jacobian
+def backpropogate(upstream: SlowgradVar, x: SlowgradVar) -> None:
+    """Backpropogates from upsteam into local and updates gradient"""
+    x.jacobian = backprop(upstream.jacobian, x.local_jacobian)
+    x.grad += x.jacobian

@@ -2,8 +2,10 @@ import torch
 import string
 from torch import einsum
 import torch.nn.functional as F
+from typing import Optional
 
 
+# ! Double check variable names here
 def split_einsum_pattern(ptrn: str) -> tuple[str, str, str]:
     """Splits einsum pattern into input and output components."""
     in_ptrn, out_ptrn = ptrn.split("->")[0].split(","), ptrn.split("->")[1]
@@ -30,11 +32,19 @@ def create_char_mappings(x_ptrn: str, a_ptrn: str) -> tuple[dict, dict]:
     return char_dict, char_dict_inv
 
 
-def create_backprop_einsum_pattern(x_len: int, a_len: int) -> str:
+def create_backprop_einsum_pattern(upstream_dim: int, local_dim: int) -> str:
     """Constructs an einsum pattern for backpropagation."""
-    x_ptrn = string.ascii_lowercase[:x_len]
-    out_ptrn = string.ascii_lowercase[x_len:a_len]
-    return f"{x_ptrn},{x_ptrn + out_ptrn}->{out_ptrn}"
+    upstream_ptrn = string.ascii_lowercase[:upstream_dim]
+    local_ptrn = string.ascii_lowercase[upstream_dim:local_dim]
+    return f"{upstream_ptrn},{upstream_ptrn + local_ptrn}->{local_ptrn}"
+
+
+def backprop(
+    upstream_jacobian: torch.Tensor, local_jacobian: torch.Tensor
+) -> torch.Tensor:
+    """Backpropogates upstream jacobian into local jacobian"""
+    ptrn = create_backprop_einsum_pattern(upstream_jacobian.dim(), local_jacobian.dim())
+    return einsum(ptrn, upstream_jacobian, local_jacobian)
 
 
 def create_output_einsum_pattern(
@@ -48,7 +58,7 @@ def create_output_einsum_pattern(
     return f"{current_ptrn}->{final_ptrn}"
 
 
-def create_jacobian_einsum_pattern(x_ptrn: str, a_ptrn: str) -> str:
+def create_jacobian_diagonal_pattern(x_ptrn: str, a_ptrn: str) -> str:
     """Creates einsum pattern to select a slice of the Jacobian"""
     start = x_ptrn + a_ptrn + x_ptrn
     end = "".join([c for c in x_ptrn if c not in a_ptrn]) + a_ptrn
@@ -62,14 +72,14 @@ def prepare_einsum_patterns(ptrn: str) -> tuple[str, str]:
     einsum_out_string = create_output_einsum_pattern(
         char_dict_inv, x_ptrn, a_ptrn, out_ptrn
     )
-    einsum_jacobian_string = create_jacobian_einsum_pattern(x_ptrn, a_ptrn)
+    einsum_jacobian_string = create_jacobian_diagonal_pattern(x_ptrn, a_ptrn)
     return einsum_out_string, einsum_jacobian_string
 
 
 def compute_einsum_jacobian(
     ptrn: str, x: torch.Tensor, a: torch.Tensor
 ) -> torch.Tensor:
-    """Computes the Jacobian using einsum with provided tensors and pattern."""
+    """Computes the jacobian of einsum(ptrn, x, a) w.r.t. x"""
     jacobian = torch.zeros(*x.shape, *a.shape, *x.shape)
     einsum_out_string, einsum_jacobian_string = prepare_einsum_patterns(ptrn)
     einsum(einsum_jacobian_string, jacobian)[:] = a
@@ -77,12 +87,13 @@ def compute_einsum_jacobian(
 
 
 def diag_ptrn(dim: int) -> str:
+    """Returns a einsum ptrn used to select the diagonal of a tensor"""
     ptrn = string.ascii_lowercase[:dim]
     return f"{ptrn}{ptrn}->{ptrn}"
 
 
 def sigmoid_jacobian(x: torch.Tensor) -> torch.Tensor:
-    """Computs the jacobian of sigmoid(x) for arbitary x"""
+    """Computes the jacobian of sigmoid(x) for arbitary x"""
     sig = torch.sigmoid(x)
     j = torch.zeros(*x.shape, *x.shape)
     einsum(diag_ptrn(x.dim()), j)[:] = sig * (1 - sig)
@@ -90,11 +101,12 @@ def sigmoid_jacobian(x: torch.Tensor) -> torch.Tensor:
 
 
 def mse_jacobian(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    assert x.shape == y.shape, "shape mismatch"
+    """Computes jacobian of MSE loss w.r.t x"""
     return 2 * (x - y) / x.numel()
 
 
 def softmax_jacobian(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
+    """Computes the jacobian of the softmax of x"""
     identity = torch.zeros(*x.shape, *x.shape)
     einsum(diag_ptrn(x.dim()), identity)[:] = 1
     soft = F.softmax(x, dim=dim)
@@ -113,3 +125,32 @@ def softmax_jacobian(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
     return einsum(
         f"{chars[:x.dim()]},{chars},{chars}->{chars}", soft, identity - soft, mask
     )
+
+
+def haddamard_sum_ptrn(x_dim: int) -> str:
+    chars = string.ascii_lowercase[:x_dim]
+    return f"{chars},{chars}->"
+
+
+def cross_entropy_jacobian(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    soft_x: Optional[torch.Tensor] = None,
+    log_soft_x: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Computes jacobian of cross entropy loss w.r.t. x"""
+    dim = -1
+    if soft_x and log_soft_x:
+        soft, log_soft = soft_x, log_soft_x
+    else:
+        soft = F.softmax(x, dim=dim)
+        log_soft = torch.log(soft)
+
+    haddamard_jacobian = -(1 / x.shape[0]) * compute_einsum_jacobian(
+        haddamard_sum_ptrn(x.dim()), log_soft, y
+    )
+    log_jacobian = torch.zeros(*x.shape, *x.shape)
+    einsum(diag_ptrn(x.dim()), log_jacobian)[:] = 1 / soft
+    soft_jacobian = softmax_jacobian(x, dim=dim)
+    j = backprop(haddamard_jacobian, log_jacobian)
+    return backprop(j, soft_jacobian)

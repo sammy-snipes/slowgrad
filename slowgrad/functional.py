@@ -1,6 +1,7 @@
 import torch
 from torch import einsum
-from .engine import SlowgradVar
+import torch.nn.functional as F
+from .engine import SlowgradVar, backpropogate
 from .autograd.jacobian import (
     compute_einsum_jacobian,
     swap_einsum_inputs,
@@ -8,18 +9,10 @@ from .autograd.jacobian import (
     create_backprop_einsum_pattern,
     mse_jacobian,
     softmax_jacobian,
+    cross_entropy_jacobian,
+    haddamard_sum_ptrn,
 )
 import string
-
-
-def backpropogate(x: SlowgradVar, out: SlowgradVar) -> None:
-    """Backpropogates from 'out' into a"""
-    x.jacobian = einsum(
-        create_backprop_einsum_pattern(out.jacobian.dim(), x.local_jacobian.dim()),
-        out.jacobian,
-        x.local_jacobian,
-    )
-    x.grad += x.jacobian
 
 
 def slowgrad_einsum(ptrn: str, a: SlowgradVar, b: SlowgradVar) -> SlowgradVar:
@@ -38,7 +31,8 @@ def slowgrad_einsum(ptrn: str, a: SlowgradVar, b: SlowgradVar) -> SlowgradVar:
 
         def execute_backprop(ptrn, x, y, out):
             calc_local_jacobian(ptrn, x, y)
-            backpropogate(x, out)
+            backpropogate(out, x)
+            # backpropogate(x, out)
 
         execute_backprop(ptrn, a, b, out)
         execute_backprop(swap_einsum_inputs(ptrn), b, a, out)
@@ -53,7 +47,8 @@ def slowgrad_sigmoid(x: SlowgradVar) -> SlowgradVar:
 
     def _backward():
         x.local_jacobian = sigmoid_jacobian(x.data)
-        backpropogate(x, out)
+        # backpropogate(x, out)
+        backpropogate(out, x)
 
     out._backward = _backward
     return out
@@ -65,19 +60,38 @@ def slowgrad_mse(x: SlowgradVar, y: SlowgradVar) -> SlowgradVar:
     def _backward():
         x.local_jacobian = mse_jacobian(x.data, y.data)
         y.local_jacobian = mse_jacobian(y.data, x.data)
-        backpropogate(x, out)
-        backpropogate(y, out)
+        # backpropogate(x, out)
+        # backpropogate(y, out)
+        backpropogate(out, x)
+        backpropogate(out, y)
 
     out._backward = _backward
     return out
 
 
 def slowgrad_softmax(x: SlowgradVar, dim: int = -1) -> SlowgradVar:
-    out = SlowgradVar(torch.nn.functional.softmax(x.data, dim=dim), _children=(x,))
+    out = SlowgradVar(F.softmax(x.data, dim=dim), _children=(x,))
 
     def _backward():
         x.local_jacobian = softmax_jacobian(x.data, dim=dim)
-        backpropogate(x, out)
+        # backpropogate(x, out)
+        backpropogate(out, x)
+
+    out._backward = _backward
+    return out
+
+
+def slowgrad_cross_entropy_loss(x: SlowgradVar, y: SlowgradVar) -> SlowgradVar:
+    # ? Should this support y grad as well? prolly....
+    dim = -1
+    soft = F.softmax(x.data, dim=dim)
+    log_soft = torch.log(soft)
+    loss = -einsum(haddamard_sum_ptrn(x.data.dim()), log_soft, y) / x.data.shape[0]
+    out = SlowgradVar(loss, _children=(x, y))
+
+    def _backward():
+        x.local_jacobian = cross_entropy_jacobian(x.data, y.data, soft, log_soft)
+        backpropogate(out, x)
 
     out._backward = _backward
     return out
