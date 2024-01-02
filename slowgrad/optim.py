@@ -4,7 +4,8 @@ from typing import List, Tuple
 import torch
 
 
-class SlowgradOptim:
+# ! Write esomething else besides adam...normal SGD fine too..
+class SlowgradAdam:
     def __init__(
         self,
         params: List[SlowgradVar],
@@ -25,6 +26,9 @@ class SlowgradOptim:
 
     def zero_grad(self):
         for p in self.params:
+            # ! Is this okay?
+            p.local_jacobian = torch.zeros_like(p.local_jacobian)
+            p.jacobian = torch.zeros_like(p.jacobian)
             p.grad = torch.zeros_like(p.grad)
 
     def step(self):
@@ -45,5 +49,4 @@ class SlowgradOptim:
 
             m_hat = self.m[param] / (1 - self.betas[0] ** self.t)
             v_hat = self.v[param] / (1 - self.betas[1] ** self.t)
-
-            param.data -= self.lr * m_hat / (v_hat**0.5 + self.eps)
+            param.data = param.data - self.lr * m_hat / (v_hat**0.5 + self.eps)
