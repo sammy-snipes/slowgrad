@@ -6,13 +6,6 @@ Autograd engine built around einsum (work in progress). Its really slow. Since N
 
 The meat and potatoes are in `slowgrad/autograd/jacobian.py` which handles jacobian/gradient calculation, and then `slowgrad/engine.py` which is a wrapper for holding values. 150 and 100 lines of code, respectively. The rest of this junk is utils to make it feel more like pytorch.
 
-### Installation 
-Install [PyTorch](https://pytorch.org/get-started/locally/), then
-
-```bash
-pip install slowgrad
-```
-
 ### Example usage
 
 ```python
