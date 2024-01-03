@@ -1,7 +1,7 @@
 import torch
 from torch import einsum
 import string
-from .autograd.jacobian import create_backprop_einsum_pattern, backprop
+from .autograd.jacobian import backprop
 from typing import Optional
 
 

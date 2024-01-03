@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from typing import Optional
 
 
-# ! Double check variable names here
 def split_einsum_pattern(ptrn: str) -> tuple[str, str, str]:
     """Splits einsum pattern into input and output components."""
     in_ptrn, out_ptrn = ptrn.split("->")[0].split(","), ptrn.split("->")[1]

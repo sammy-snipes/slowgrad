@@ -42,7 +42,7 @@ Its helpful to think of `einsum('', x, y)` as working in two steps.
 1. make some $(x.shape)\times(y.shape)$ matrix
 2. sum over some of the axes
 
-If we take the kronecker product of two 2D matricies $X, Y$ in einsum, we get a 4D tensor $K$ where `K[i, j, :, :] ` $ = x\_{i, j} \* Y$
+If we take the kronecker product of two 2D matricies $X, Y$ in einsum, we get a 4D tensor $K$ where `K[i, j, :, :]` $ = x_{i, j} * Y$
 
 If do matrix multiplication we get a 4D tensor $K$ where
 
@@ -114,6 +114,36 @@ J = einsum('ijklmn->ijkmn', J)
 ```
 
 #### Matrix Multiplication
+
+Let $E(X) = $ `K = einsum('ij,jk->ik', x, y)`. As we said earlier this makes a 4D tensor $K$ where
+
+$$
+K[i, j, k, l] =
+\begin{cases}
+x_{ij} * y_{kl} \ \ if  \  \ j = k \\
+0 \ \ \ else
+\end{cases}
+$$
+
+differentiating this gives us a jacobian $J$ where
+
+$$
+J[i, j, k, l, m, n] =
+\begin{cases}
+y_{kl} \ \ if  \  \ (i, j) = (m, n)  \ and \ j = k \\
+0 \ \ \ else
+\end{cases}
+$$
+
+To build this with einsum slicing and broadcasting we can do
+
+```python
+X, Y = torch.randn(3, 4), torch.randn(4, 5)
+J = torch.zeros(3, 4, 4, 5, 3, 4)
+einsum('ijjkij->ijk', J)[:] = Y
+J = einsum('ijklmn->ilmn')
+```
+#### Haddamard Product 
 
 Let $E(X) = $ `K = einsum('ij,jk->ik', x, y)`. As we said earlier this makes a 4D tensor $K$ where
 
