@@ -1,8 +1,8 @@
 # slowgrad
 
-![](its_really_slow.png)
+![](jpg.png)
 
-Autograd engine built around einsum (work in progress. Its really slow.) Since NN's, CNN's, and even transformers can be written almost entirely with einsum, I thought it would be fun to write an autograd library that just implements the backward pass of einsum. Heavy inspiration taken from Andrej Kaparthy's [micrograd](https://github.com/karpathy/micrograd/tree/master)
+Autograd engine built around einsum (work in progress, its really slow). Since NN's, CNN's, and even transformers can be written almost entirely with einsum, I thought it would be fun to write an autograd library that just implements the backward pass of einsum. Heavy inspiration taken from Andrej Kaparthy's [micrograd](https://github.com/karpathy/micrograd/tree/master)
 
 The meat and potatoes are in `slowgrad/autograd/jacobian.py` which handles jacobian/gradient calculation, and then `slowgrad/engine.py` which is a wrapper for holding values. The rest of this junk is utils to make it feel more like pytorch.
 
