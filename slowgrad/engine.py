@@ -15,7 +15,7 @@ class SlowgradVar:
             else torch.tensor(data, requires_grad=False)
         )
         self.grad: torch.Tensor = torch.zeros_like(self.data, requires_grad=False)
-
+        self.name = ""  # Sometimes naming tensors is helpful for debugging
         self.local_jacobian: torch.Tensor = torch.Tensor()
         self.jacobian: torch.Tensor = torch.Tensor()
 
@@ -82,6 +82,9 @@ class SlowgradVar:
         build_topo(self)
         for v in reversed(topo):
             v._backward()
+
+    def __repr__(self) -> str:
+        return f"({self.name if self.name else 'SlowgradVar'}:{self.data.shape})"
 
 
 def backpropogate(upstream: SlowgradVar, x: SlowgradVar) -> None:

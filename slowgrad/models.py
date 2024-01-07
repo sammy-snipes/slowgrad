@@ -6,10 +6,11 @@ from .functional import (
     slowgrad_mse,
     slowgrad_softmax,
     slowgrad_cross_entropy_loss,
+    slowgrad_relu,
 )
+from .convolutional import slowgrad_2d_convolution
 import torch
 import torch.nn as nn
-from einops import rearrange
 
 
 class SlowgradModule:
@@ -75,13 +76,57 @@ class SlowgradSoftmax(SlowgradModule):
         super().__init__()
         self.dim = dim
 
+    def from_torch(self, x: nn.Softmax) -> SlowgradModule:
+        self.dim = x.dim
+        return self
+
     def __call__(self, x) -> SlowgradVar:
         return slowgrad_softmax(x, self.dim)
+
+
+class SlowgradReLU(SlowgradModule):
+    def __call__(self, x) -> SlowgradVar:
+        return slowgrad_relu(x)
 
 
 class SlowgradCrossEntropyLoss(SlowgradModule):
     def __call__(self, x, y) -> SlowgradVar:
         return slowgrad_cross_entropy_loss(x, y)
+
+
+class SlowgradConv2d(SlowgradModule):
+    def __init__(
+        self,
+        in_channels: Optional[int] = None,
+        out_channels: Optional[int] = None,
+        kernel_size: Optional[int] = None,
+        stride: Optional[int] = None,
+    ) -> None:
+        if all(
+            [_ is not None for _ in (in_channels, out_channels, kernel_size, stride)]
+        ):
+            self.in_channels = in_channels
+            self.out_channels = out_channels
+            self.kernel_size = kernel_size
+            self.stride = stride
+            self.weight = SlowgradVar(
+                torch.randn(out_channels, in_channels, kernel_size, kernel_size)
+            )
+
+    def from_torch(self, x: nn.Conv2d) -> SlowgradModule:
+        self.weight = SlowgradVar(x.weight.detach().clone())
+        self.in_channels = x.in_channels
+        self.out_channels = x.out_channels
+        self.kernel_size = x.kernel_size[0]
+        self.stride = x.stride[0]
+        assert x.bias is None, "Bro, I didnt implement that yet"
+        return self
+
+    def __call__(self, x: SlowgradVar) -> SlowgradVar:
+        return slowgrad_2d_convolution(x, self.weight, self.kernel_size, self.stride)
+
+    def parameters(self):
+        return [self.weight]
 
 
 class SlowgradSequential:
@@ -101,6 +146,9 @@ class SlowgradSequential:
             nn.Linear: SlowgradLinear,
             nn.MSELoss: SlowgradMSELoss,
             nn.CrossEntropyLoss: SlowgradCrossEntropyLoss,
+            nn.ReLU: SlowgradReLU,
+            nn.Conv2d: SlowgradConv2d,
+            nn.Softmax: SlowgradSoftmax,
         }
         missing_implementation = [
             type(l) for l in layers if type(l) not in implemented_layers

@@ -99,6 +99,13 @@ def sigmoid_jacobian(x: torch.Tensor) -> torch.Tensor:
     return j
 
 
+def relu_jacobian(x: torch.Tensor) -> torch.Tensor:
+    j = torch.zeros(*x.shape, *x.shape)
+    diag = torch.where(x > 0, 1, 0)
+    einsum(diag_ptrn(x.dim()), j)[:] = diag
+    return j
+
+
 def mse_jacobian(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """Computes jacobian of MSE loss w.r.t x"""
     return 2 * (x - y) / x.numel()

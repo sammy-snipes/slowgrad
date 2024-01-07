@@ -1,5 +1,4 @@
 from .engine import SlowgradVar
-from .models import SlowgradModule
 from typing import List, Tuple
 import torch
 

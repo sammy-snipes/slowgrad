@@ -1,6 +1,7 @@
 import torch
 from torch import einsum
 import torch.nn.functional as F
+from torch.autograd.functional import jacobian
 from .engine import SlowgradVar, backpropogate
 from .autograd.jacobian import (
     compute_einsum_jacobian,
@@ -10,8 +11,8 @@ from .autograd.jacobian import (
     softmax_jacobian,
     cross_entropy_jacobian,
     haddamard_sum_ptrn,
+    relu_jacobian,
 )
-import string
 
 
 def slowgrad_einsum(ptrn: str, a: SlowgradVar, b: SlowgradVar) -> SlowgradVar:
@@ -48,6 +49,17 @@ def slowgrad_sigmoid(x: SlowgradVar) -> SlowgradVar:
     return out
 
 
+def slowgrad_relu(x: SlowgradVar) -> SlowgradVar:
+    out = SlowgradVar(torch.nn.ReLU()(x.data), _children=(x,))
+
+    def _backward():
+        x.local_jacobian = relu_jacobian(x.data)
+        backpropogate(out, x)
+
+    out._backward = _backward
+    return out
+
+
 def slowgrad_mse(x: SlowgradVar, y: SlowgradVar) -> SlowgradVar:
     out = SlowgradVar(((x.data - y.data) ** 2 / x.data.numel()).sum(), _children=(x, y))
 
@@ -66,7 +78,6 @@ def slowgrad_softmax(x: SlowgradVar, dim: int = -1) -> SlowgradVar:
 
     def _backward():
         x.local_jacobian = softmax_jacobian(x.data, dim=dim)
-        # backpropogate(x, out)
         backpropogate(out, x)
 
     out._backward = _backward
@@ -74,7 +85,6 @@ def slowgrad_softmax(x: SlowgradVar, dim: int = -1) -> SlowgradVar:
 
 
 def slowgrad_cross_entropy_loss(x: SlowgradVar, y: SlowgradVar) -> SlowgradVar:
-    # ? Should this support y grad as well? prolly....
     dim = -1
     soft = F.softmax(x.data, dim=dim)
     log_soft = torch.log(soft)
