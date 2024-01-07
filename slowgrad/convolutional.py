@@ -56,7 +56,7 @@ def slowgrad_2d_convolution(
 
     def _backward():
         dx = einsum("bfhw,fckt->bchwkt", torch.ones_like(out.data), w.data)
-        dx = einsum("bchwkt,bfhw->bchwkt", dx, out.jacobian)
+
         dx = invert_convolution_windows(dx, x.data.shape, kernel_size, stride)
         x.jacobian = dx
         x.grad += dx

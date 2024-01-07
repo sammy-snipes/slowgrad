@@ -2,9 +2,9 @@
 
 ![](its_really_slow.png)
 
-Autograd engine built around einsum (work in progress). Its really slow. Since NN's, CNN's, and even transformers can be written almost entirely with einsum, I thought it would be fun to write an autograd library that just implements the backward pass of einsum. Heavy inspiration taken from Andrej Kaparthy's [micrograd](https://github.com/karpathy/micrograd/tree/master)
+Autograd engine built around einsum (work in progress. Its really slow.) Since NN's, CNN's, and even transformers can be written almost entirely with einsum, I thought it would be fun to write an autograd library that just implements the backward pass of einsum. Heavy inspiration taken from Andrej Kaparthy's [micrograd](https://github.com/karpathy/micrograd/tree/master)
 
-The meat and potatoes are in `slowgrad/autograd/jacobian.py` which handles jacobian/gradient calculation, and then `slowgrad/engine.py` which is a wrapper for holding values. 150 and 100 lines of code, respectively. The rest of this junk is utils to make it feel more like pytorch.
+The meat and potatoes are in `slowgrad/autograd/jacobian.py` which handles jacobian/gradient calculation, and then `slowgrad/engine.py` which is a wrapper for holding values. The rest of this junk is utils to make it feel more like pytorch.
 
 ### Example usage
 
@@ -39,9 +39,3 @@ for p in params:
 Theres a training example of a nn in `example.ipynb`. Using a 3-layer network I got the following decision boundary on a moon dataset
 
 ![](moon_boundary.png)
-
-### Running tests
-
-```bash
-python pytest
-```
